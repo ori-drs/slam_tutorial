@@ -4,3 +4,4 @@ open3d
 gtsam
 jupyter
 jupyterlab
+graphviz
