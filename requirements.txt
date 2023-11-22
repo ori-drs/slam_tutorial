@@ -1,6 +1,5 @@
 pre-commit
 pandas
-pytransform3d[all]
 open3d
 gtsam
 jupyter
