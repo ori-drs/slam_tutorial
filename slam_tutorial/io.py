@@ -47,7 +47,9 @@ def read_pose_edge_slam(tokens):
     return relative_pose, relative_info, parent_id, child_id
 
 
-def load_ground_truth_file_as_pose_graph(path: str):
+def load_ground_truth_file_as_pose_graph(
+    path: str, distance_thr: float = 0.0, num_nodes: int = np.inf
+):
     graph = PoseGraph()
 
     with open(path, "r") as file:
@@ -55,6 +57,7 @@ def load_ground_truth_file_as_pose_graph(path: str):
 
         # Load nodes
         n = 0
+        last_pose = None
         for line in lines:
             tokens = line.strip().split(",")
             if tokens[0][0] == "#":
@@ -62,20 +65,36 @@ def load_ground_truth_file_as_pose_graph(path: str):
 
             # Parse line
             pose, stamp = read_pose_gt(tokens)
-            graph.add_node(n, stamp, pose)
-            n += 1
+            if last_pose is None:
+                last_pose = pose
+                continue
+
+            # Just add nodes farther apart
+            if (
+                np.linalg.norm(pose.translation() - last_pose.translation())
+                >= distance_thr
+            ):
+                graph.add_node(n, stamp, pose)
+                last_pose = pose
+                n += 1
+
+            # Just add num_nodes nodes
+            if n >= num_nodes:
+                break
 
         # Add odometry edges
         for n, node in enumerate(graph.nodes):
             if n == 0:
                 continue
-            if n == graph.size - 1:
+            if n == graph.size:
                 break
 
-            ni = graph.nodes[n]
-            nj = graph.nodes[n + 1]
+            ni = graph.nodes[n - 1]
+            nj = graph.nodes[n]
             delta_pose = ni["pose"].inverse() * nj["pose"]
-            graph.add_edge(n, n + 1, "odometry", delta_pose, np.eye(6) * 1000)
+            graph.add_edge(n - 1, n, "odometry", delta_pose, np.eye(6) * 1000)
+
+    # Return complete graph
     return graph
 
 
