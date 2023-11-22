@@ -1,9 +1,21 @@
 # Author: Matias Mattamala (matias@robots.ox.ac.uk)
 
 import numpy as np
+import open3d as o3d
 import gtsam
 
 from slam_tutorial.pose_graph import PoseGraph
+
+NCD_BASE_LIDAR = gtsam.Pose3(
+    gtsam.Rot3.Ypr(3 / 4 * np.pi, 0.0, 0.0), np.array([-0.04, -0.0845, -0.06])
+).matrix()
+
+
+def read_cloud(stamp, clouds_path):
+    sec, nsec = stamp
+    cloud_file = clouds_path + f"/cloud_{sec}_{int(nsec):09}.pcd"
+    cloud = o3d.t.io.read_point_cloud(cloud_file)
+    return cloud
 
 
 def read_pose_gt(tokens):
@@ -98,7 +110,7 @@ def load_ground_truth_file_as_pose_graph(
     return graph
 
 
-def load_pose_graph(path: str):
+def load_pose_graph(path: str, clouds_path: str = None, T_base_lidar=NCD_BASE_LIDAR):
     graph = PoseGraph()
     with open(path, "r") as file:
         lines = file.readlines()
@@ -115,6 +127,11 @@ def load_pose_graph(path: str):
             elif tokens[0] == "VERTEX_SE3:QUAT_TIME":
                 pose, pose_stamp, pose_id = read_pose_slam(tokens[1:])
                 graph.add_node(pose_id, pose_stamp, pose)
+
+                if clouds_path is not None:
+                    cloud = read_cloud(pose_stamp, clouds_path)
+                    cloud.transform(T_base_lidar)
+                    graph.add_clouds(pose_id, cloud)
 
             elif tokens[0] == "EDGE_SE3:QUAT":
                 relative_pose, relative_info, parent_id, child_id = read_pose_edge_slam(

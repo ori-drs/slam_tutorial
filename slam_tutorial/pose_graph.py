@@ -33,6 +33,12 @@ class PoseGraph:
     def get_node_pose(self, id):
         return self._nodes[id]["pose"]
 
+    def get_node_cloud(self, id):
+        try:
+            return self._clouds[id]
+        except Exception:
+            return o3d.t.geometry.PointCloud()
+
     def set_node_pose(self, id, pose):
         self._nodes[id]["pose"] = pose
 
@@ -155,7 +161,8 @@ def create_test_pose_graph(noise_per_m=0.1, axis="xy", drift_type="random_walk")
 
     # Read ground truth data
     graph_ground_truth = io.load_pose_graph(
-        slam_tutorial.ASSETS_DIR + "/ground_truth.slam"
+        slam_tutorial.ASSETS_DIR + "/ground_truth.slam",
+        clouds_path=slam_tutorial.ASSETS_DIR + "/individual_clouds",
     )
 
     # Create another one with odometry drift
