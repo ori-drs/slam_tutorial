@@ -37,7 +37,7 @@ class PoseGraph:
         try:
             return self._clouds[id]
         except Exception:
-            return o3d.t.geometry.PointCloud()
+            return o3d.geometry.PointCloud()
 
     def set_node_pose(self, id, pose):
         self._nodes[id]["pose"] = pose
@@ -84,7 +84,7 @@ class PoseGraph:
         self._adjacency[parent_id][child_id] = len(self._edges) - 1
 
     def add_clouds(self, id, scan):
-        assert isinstance(scan, o3d.t.geometry.PointCloud)
+        assert isinstance(scan, o3d.geometry.PointCloud)
         self._clouds[id] = scan
 
 
@@ -109,7 +109,12 @@ def initialize_from_odometry(graph):
 
 
 def add_odometry_drift(
-    graph, noise_per_m=0.0, axis="", rot_axis="", drift_type="constant"
+    graph,
+    noise_per_m=0.0,
+    axis="",
+    rot_axis="",
+    drift_type="constant",
+    reset_node_poses=True,
 ):
     noise_mask = np.zeros(6)
     if "x" in axis:
@@ -151,29 +156,106 @@ def add_odometry_drift(
         # Update odometry measurement
         new_graph.edges[i]["pose"] = new_relative_pose
 
-    initialize_from_odometry(new_graph)
+    if reset_node_poses:
+        initialize_from_odometry(new_graph)
     return new_graph
 
 
-def create_test_pose_graph(noise_per_m=0.1, axis="xy", drift_type="random_walk"):
+def create_test_pose_graph(
+    use_wrong_init=True,
+    use_noisy_odom=False,
+    use_true_loops=False,
+    use_false_loops=False,
+    init_noise_per_m=0.1,
+    init_drift_axis="xy",
+    init_drift_type="random_walk",
+    odo_noise_per_m=0.1,
+    odo_drift_axis="xy",
+    odo_drift_type="random_walk",
+    loop_candidate_id_distance=10,
+    true_loop_dist_thr=5,
+    false_loop_dist_thr=10,
+    true_loop_num=2,
+    false_loop_num=10,
+    loop_info=1000,
+):
     import slam_tutorial.io as io
     import slam_tutorial
+    import copy
 
     # Read ground truth data
     graph_ground_truth = io.load_pose_graph(
         slam_tutorial.ASSETS_DIR + "/ground_truth.slam",
         clouds_path=slam_tutorial.ASSETS_DIR + "/individual_clouds",
     )
+    out_graph = copy.deepcopy(graph_ground_truth)
 
-    # Create another one with odometry drift
-    graph_with_drift = add_odometry_drift(
-        graph_ground_truth, noise_per_m=noise_per_m, axis=axis, drift_type=drift_type
-    )
+    # Create a graph with odometry drift
+    if use_wrong_init:
+        graph_init = add_odometry_drift(
+            graph_ground_truth,
+            noise_per_m=init_noise_per_m,
+            axis=init_drift_axis,
+            drift_type=init_drift_type,
+            reset_node_poses=True,
+        )
+        out_graph.nodes = graph_init.nodes
 
-    # Create a new pose graph with ground truth edges but drifting poses
-    import copy
+    if use_noisy_odom:
+        graph_odo = add_odometry_drift(
+            graph_ground_truth,
+            noise_per_m=odo_noise_per_m,
+            axis=odo_drift_axis,
+            drift_type=odo_drift_type,
+            reset_node_poses=False,
+        )
+        out_graph.edges = graph_odo.edges
 
-    graph = copy.deepcopy(graph_with_drift)
-    graph.edges = graph_ground_truth.edges
+    if use_true_loops or use_false_loops:
+        import random
 
-    return graph
+        true_loop_candidates = []
+        false_loop_candidates = []
+        for i in range(graph_ground_truth.size):
+            for j in range(i, graph_ground_truth.size):
+                if abs(i - j) > loop_candidate_id_distance:
+                    posei = graph_ground_truth.get_node_pose(i)
+                    posej = graph_ground_truth.get_node_pose(j)
+                    relative_pose = posei.inverse() * posej
+                    relative_distance = np.linalg.norm(relative_pose.translation())
+
+                    if relative_distance < true_loop_dist_thr:
+                        true_loop_candidates.append(
+                            {"parent_id": i, "child_id": j, "pose": relative_pose}
+                        )
+                    if relative_distance > false_loop_dist_thr:
+                        eye = gtsam.Pose3.Identity()
+                        false_loop_candidates.append(
+                            {"parent_id": i, "child_id": j, "pose": eye}
+                        )
+
+        # Add true loop candidates
+        if use_true_loops:
+            random.shuffle(true_loop_candidates)
+            for c in true_loop_candidates[:true_loop_num]:
+                out_graph.add_edge(
+                    c["parent_id"],
+                    c["child_id"],
+                    "loop",
+                    c["pose"],
+                    loop_info * np.eye(6),
+                )
+
+        # Add false loop candidates
+        if use_false_loops:
+            random.shuffle(false_loop_candidates)
+            for c in false_loop_candidates[:false_loop_num]:
+                out_graph.add_edge(
+                    c["parent_id"],
+                    c["child_id"],
+                    "loop",
+                    c["pose"],
+                    loop_info * np.eye(6),
+                )
+
+    return out_graph

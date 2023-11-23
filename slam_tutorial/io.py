@@ -14,7 +14,7 @@ NCD_BASE_LIDAR = gtsam.Pose3(
 def read_cloud(stamp, clouds_path):
     sec, nsec = stamp
     cloud_file = clouds_path + f"/cloud_{sec}_{int(nsec):09}.pcd"
-    cloud = o3d.t.io.read_point_cloud(cloud_file)
+    cloud = o3d.io.read_point_cloud(cloud_file)
     return cloud
 
 

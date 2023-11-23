@@ -3,12 +3,80 @@ import numpy as np
 import open3d as o3d
 import open3d.visualization.gui as gui
 
-# import open3d.visualization.rendering as rendering
-
-
 # colors
 RED = [1, 0, 0]
-GRAY = [0.5, 0.5, 0.5]
+GRAY = [0.3, 0.3, 0.3]
+LIGHT_GRAY = [0.7, 0.7, 0.7]
+
+
+def graph_to_geometries(
+    graph,
+    show_frames=True,
+    show_edges=True,
+    show_nodes=True,
+    show_clouds=False,
+    odometry_color=GRAY,
+    loop_color=RED,
+    up_to_node=np.inf,
+):
+    pose_graph = copy.deepcopy(graph)
+    geometries = []
+
+    node_centers = []
+    frames_vis = o3d.geometry.TriangleMesh()
+    nodes_vis = o3d.geometry.TriangleMesh()
+    # clouds_vis = o3d.t.geometry.PointCloud()
+
+    for n, node in enumerate(pose_graph.nodes):
+        if n > up_to_node:
+            break
+        pose = node["pose"].matrix()
+        pos = pose[0:3, 3]
+        rot = pose[0:3, 0:3]
+        node_centers.append(pos)
+
+        if show_frames:
+            frame_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                size=1.0, origin=pos
+            )
+            frame_mesh.rotate(rot, center=pos)
+            frames_vis += frame_mesh
+
+        if show_nodes:
+            node_mesh = o3d.geometry.TriangleMesh.create_sphere(radius=0.3)
+            node_mesh.translate(pos)
+            nodes_vis += node_mesh
+
+        if show_clouds:
+            cloud = pose_graph.get_node_cloud(n)
+            cloud.transform(pose)
+            cloud.paint_uniform_color(LIGHT_GRAY)
+            geometries.append(cloud)
+
+    # vis.add_geometry("clouds", clouds_vis)
+    geometries.append(frames_vis)
+    geometries.append(nodes_vis)
+
+    if show_edges:
+        edges = []
+        edge_colors = []
+        for e in pose_graph.edges:
+            if e["parent_id"] > up_to_node or e["child_id"] > up_to_node:
+                continue
+
+            edges.append([e["parent_id"], e["child_id"]])
+            edge_colors.append(
+                odometry_color if e["type"] == "odometry" else loop_color
+            )
+
+        line_set = o3d.geometry.LineSet(
+            points=o3d.utility.Vector3dVector(node_centers),
+            lines=o3d.utility.Vector2iVector(edges),
+        )
+        line_set.colors = o3d.utility.Vector3dVector(edge_colors)
+        geometries.append(line_set)
+
+    return geometries
 
 
 def show_pose_graph(
