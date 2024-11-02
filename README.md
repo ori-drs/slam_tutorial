@@ -1,6 +1,7 @@
 # slam-tutorial
 
 ORIentate tutorial: SLAM and factor graphs
+Slides: [link](https://docs.google.com/presentation/d/1JN-fBMJgrXs6wE3bcKmvP25KfUHAOUQuBsK460e5oYQ/edit#slide=id.g8caa8b3668_0_0)
 
 ## Installation
 
